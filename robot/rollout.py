@@ -1,11 +1,11 @@
 """Run a trained SmolVLA policy on the SO-101 follower.
 
-usage: python rollout.py --policy CKPT --task "Move the cube to region 2." [--duration 25] [--display]
+usage: python rollout.py --policy CKPT --task "Move the cube to region 2." [--duration 25] [--view HOST:PORT]
 Starts from the same HOME pose as the data collection, runs the policy for up to --duration seconds,
 then returns HOME and folds. Ctrl+C stops the policy early; the arm still returns HOME and folds.
---display shows the cameras and joints in Rerun. Opens only the two robot cameras (robot_cams.json).
+--view streams both cameras to viewer.py on HOST:PORT; Esc or q there stops the policy. Opens only the two robot cameras (robot_cams.json).
 """
-import argparse, json, os, signal, sys, threading, time
+import argparse, json, os, signal, socket, struct, sys, threading, time
 from pathlib import Path
 import cv2, numpy as np, torch
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
@@ -20,9 +20,8 @@ ap.add_argument("--policy", default=None, help="checkpoint folder or Hugging Fac
 ap.add_argument("--task", default="", help="instruction text")
 ap.add_argument("--duration", type=float, default=25, help="seconds to run the policy")
 ap.add_argument("--tag", default=time.strftime("%H%M%S"), help="output folder name under rollouts/")
-ap.add_argument("--display", action="store_true", help="show cameras and joints in Rerun")
 ap.add_argument("--look", default=None, help="only go HOME, save a top image to this path, and fold (no policy)")
-ap.add_argument("--rerun", default=None, help="HOST:PORT of a running Rerun viewer (default: spawn one locally)")
+ap.add_argument("--view", default=None, help="HOST:PORT of a running viewer.py")
 A = ap.parse_args(); CK, TASK, SECS, TAG = A.policy, A.task, A.duration, A.tag
 if not A.look and not (TASK and CK): ap.error("--policy and --task are required unless --look is given")
 stop_req = []
@@ -116,7 +115,35 @@ class Timeout(Exception): pass
 def _alarm(*_): raise Timeout("timeout")
 signal.signal(signal.SIGALRM, _alarm); signal.signal(signal.SIGINT, _sigint)
 
-cams = {}; rows = []; stop = "done"
+class View:
+    """Streams the two cameras to viewer.py; a b'S' back from it requests a stop."""
+    def __init__(self, addr):
+        h, p = addr.rsplit(":", 1); self.s = socket.create_connection((h, int(p)), timeout=3); self.s.settimeout(None)
+        self.status, self.run = "starting", True
+        threading.Thread(target=self._send, daemon=True).start(); threading.Thread(target=self._recv, daemon=True).start()
+    def _send(self):
+        while self.run:
+            try:
+                if "top" in cams and "wrist" in cams:
+                    im = np.hstack([cv2.resize(cams[n].get(), (640, 360)) for n in ("top", "wrist")])
+                    cv2.putText(im, self.status, (12, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                    b = cv2.imencode(".jpg", im, [cv2.IMWRITE_JPEG_QUALITY, 70])[1].tobytes()
+                    self.s.sendall(struct.pack(">I", len(b)) + b)
+            except OSError: return
+            time.sleep(0.1)
+    def _recv(self):
+        try:
+            while self.run and self.s.recv(1) == b"S":
+                if not stop_req: log("stop requested from the viewer")
+                stop_req.append(1)
+        except OSError: pass
+    def close(self):
+        self.run = False
+        try: self.s.close()
+        except OSError: pass
+
+
+cams = {}; rows = []; stop = "done"; view = None
 try:
     if not A.look:
         dev = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -124,6 +151,9 @@ try:
         pre, post = make_pre_post_processors(pol.config, CK, preprocessor_overrides={"device_processor": {"device": dev}})
         log("policy loaded on", dev)
     cams = {"top": Cam(fixed["top"]), "wrist": Cam(fixed["wrist"])}
+    if A.view:
+        try: view = View(A.view); view.status = "going home"
+        except OSError as ex: log("viewer not reachable:", ex)
     for m in ["elbow_flex", "wrist_flex", "shoulder_lift"]:
         if abs(cur()[m] - mid[m]) > 3: go({**cur(), m: mid[m]}, 1.5)
     to_home(); time.sleep(0.5)
@@ -138,16 +168,12 @@ try:
                 d[key] = torch.from_numpy(im).permute(2, 0, 1).float() / 255.0
             return d
 
-        if A.display:
-            from lerobot.utils.visualization_utils import init_visualization, log_visualization_data
-            ip, port = (A.rerun.rsplit(":", 1) if A.rerun else (None, None))
-            init_visualization("rerun", session_name="agent2vla", ip=ip, port=int(port) if port else None)
         if (WD / "STOP").exists(): (WD / "STOP").unlink()
         pol.reset(); signal.alarm(int(SECS + 60)); t0 = time.time(); streak = 0; cmd = last.copy(); k = 0
         log(f"run '{TASK}' for {SECS:.0f}s")
         while time.time() - t0 < SECS:
             if stop_req:
-                stop = "Ctrl+C"; break
+                stop = "stop request"; break
             if (WD / "STOP").exists():
                 stop = "STOP file"; (WD / "STOP").unlink(); break
             ts = time.time(); st = present()
@@ -166,10 +192,7 @@ try:
             cmd = nxt
             fol.send_action({f"{m}.pos": v for m, v in zip(M, cmd)}); last = cmd.copy()
             rows.append(np.r_[time.time() - t0, st, a, cmd])
-            if A.display and k % 3 == 0:
-                ims = {n: cv2.cvtColor(cv2.resize(cams[n].get(), (640, 360)), cv2.COLOR_BGR2RGB) for n in cams}
-                log_visualization_data("rerun", observation={**ims, **{f"{m}.pos": float(v) for m, v in zip(M, st)}},
-                                       action={f"{m}.pos": float(v) for m, v in zip(M, cmd)}, compress_images=True)
+            if view: view.status = f"{TASK}  policy {time.time() - t0:4.1f}/{SECS:.0f} s"
             if k % 30 == 0:
                 cv2.imwrite(str(OUT / f"top_{k:04d}.jpg"), cams["top"].get()); cv2.imwrite(str(OUT / f"wrist_{k:04d}.jpg"), cams["wrist"].get())
             k += 1
@@ -185,7 +208,9 @@ finally:
     json.dump({"task": TASK, "ckpt": CK, "secs": SECS, "stop": stop, "steps": len(rows)}, open(OUT / "meta.json", "w"))
     signal.alarm(40)
     try:
+        if view: view.status = f"stopped: {stop} - returning home"
         to_home()
+        if view: view.status = "folding"
         if cams: cv2.imwrite(str(OUT / "final_top.jpg"), cams["top"].get())
         fold()
     except BaseException as ex: log("return error", repr(ex))
@@ -196,5 +221,6 @@ finally:
             except Exception: time.sleep(0.3)
     try: fol.bus.port_handler.closePort()
     except Exception: pass
+    if view: view.close()
     for c in cams.values(): c.close()
     log("END", OUT)

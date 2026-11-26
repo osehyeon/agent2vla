@@ -9,8 +9,7 @@ ap.add_argument("--policy", required=True, help="checkpoint folder or Hugging Fa
 ap.add_argument("--n", type=int, default=10, help="number of trials")
 ap.add_argument("--prefix", default=time.strftime("t%m%d_%H%M"), help="name prefix for rollouts/ and the results file")
 ap.add_argument("--start-image", default=None, help="top image to find the cube in (default: take one now)")
-ap.add_argument("--display", action="store_true", help="show each rollout in Rerun")
-ap.add_argument("--rerun", default=None, help="HOST:PORT of a running Rerun viewer")
+ap.add_argument("--view", default=None, help="HOST:PORT of a running viewer.py; Esc or q there stops the current trial")
 A = ap.parse_args(); WD = WORK; CK, N, PREFIX = A.policy, A.n, A.prefix
 H = np.array(json.load(open(HERE / "homography.json"))["H_robot_to_px"]); Hi = np.linalg.inv(H)
 pp = json.load(open(WD / "collect" / "paper_pose.json")); R, t = np.array(pp["R"]), np.array(pp["t"])
@@ -40,9 +39,10 @@ for k in range(N):
     dst = [r for r in (1, 2, 3) if r != loc["region"]][k % 2]
     kind, tmpl = KINDS[k % len(KINDS)]; task = tmpl.format(n=dst, c=COL[dst]); tag = f"{PREFIX}_{k:02d}"
     print(f"[{k}] cube in region {loc["region"]} -> task: {task}", flush=True)
-    subprocess.run([sys.executable, str(HERE / "rollout.py"), "--policy", CK, "--task", task, "--duration", "25", "--tag", tag] + (["--display"] if A.display else []) + (["--rerun", A.rerun] if A.rerun else []), cwd=WD,
+    subprocess.run([sys.executable, str(HERE / "rollout.py"), "--policy", CK, "--task", task, "--duration", "25", "--tag", tag] + (["--view", A.view] if A.view else []), cwd=WD,
                    env={**__import__("os").environ, "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1", "HF_HUB_OFFLINE": "1"})
     meta = json.load(open(WD / "rollouts" / tag / "meta.json"))
+    if meta["stop"] == "stop request": stop_req.append(1)
     new = locate(WD / "rollouts" / tag / "final_top.jpg")
     ok = new is not None and new["region"] == dst and new["inside"]
     r = {"trial": k, "src": loc["region"], "dst": dst, "kind": kind, "task": task, "after": new, "stop": meta["stop"], "success": ok}

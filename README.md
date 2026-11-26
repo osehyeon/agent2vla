@@ -17,7 +17,7 @@ Videos: [scripted collection](https://youtu.be/1S-19LJiTYw), [SmolVLA on the rob
 ## Install
 
 ```
-pip install "lerobot[smolvla,feetech,viz]==0.6.1" trimesh
+pip install "lerobot[smolvla,feetech]==0.6.1" trimesh
 ```
 
 Paths and the serial port are set in `robot/config.py` and can be overridden with `AGENT2VLA_WORK`, `AGENT2VLA_FOLLOWER_PORT` and `AGENT2VLA_FOLLOWER_ID`.
@@ -28,10 +28,10 @@ Paths and the serial port are set in `robot/config.py` and can be overridden wit
 1. `robot/collect.py collect N` records LeRobotDataset episodes.
 2. `robot/merge_relabel.py` merges them and assigns instructions.
 3. `train/smolvla_train.sbatch` fine-tunes `lerobot/smolvla_base`.
-4. `robot/rollout.py` runs the policy on the arm. Ctrl+C stops it; the arm then returns home and folds.
+4. `robot/rollout.py` runs the policy on the arm. Ctrl+C, or Esc in the viewer window, stops it; the arm then returns home and folds. To watch from another machine, run `robot/viewer.py` there and forward its port (`ssh -R 9877:127.0.0.1:9877`).
 
 ```
-python robot/rollout.py --policy somae/smolvla-so101-cube --task "Put the cube on the green region." --display
+python robot/rollout.py --policy somae/smolvla-so101-cube --task "Put the cube on the green region." --view 127.0.0.1:9877
 ```
 
 5. `robot/trials.py --policy CKPT --n 10` repeats rollouts, each time asking for a region other than the one the cube is in, and checks where it ended up.
