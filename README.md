@@ -17,7 +17,7 @@ Videos: [scripted collection](https://youtu.be/1S-19LJiTYw), [SmolVLA on the rob
 ## Install
 
 ```
-pip install "lerobot[smolvla,feetech]==0.6.1" trimesh
+pip install "lerobot[smolvla,feetech,viz]==0.6.1" trimesh
 ```
 
 Paths and the serial port are set in `robot/config.py` and can be overridden with `AGENT2VLA_WORK`, `AGENT2VLA_FOLLOWER_PORT` and `AGENT2VLA_FOLLOWER_ID`.
@@ -28,6 +28,12 @@ Paths and the serial port are set in `robot/config.py` and can be overridden wit
 1. `robot/collect.py collect N` records LeRobotDataset episodes.
 2. `robot/merge_relabel.py` merges them and assigns instructions.
 3. `train/smolvla_train.sbatch` fine-tunes `lerobot/smolvla_base`.
-4. `robot/trials.py` runs the policy on the arm.
+4. `robot/rollout.py` runs the policy on the arm. Ctrl+C stops it; the arm then returns home and folds.
+
+```
+python robot/rollout.py --policy somae/smolvla-so101-cube --task "Put the cube on the green region." --display
+```
+
+5. `robot/trials.py` repeats rollouts and checks where the cube ended up.
 
 `robot/so101.urdf` is `Simulation/SO101/so101_new_calib.urdf` from [TheRobotStudio/SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100) (Apache-2.0).

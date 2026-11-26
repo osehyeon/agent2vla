@@ -1,10 +1,11 @@
 """Run a trained SmolVLA policy on the SO-101 follower.
 
-usage: python rollout.py CKPT "Move the cube to region 2." [SECONDS] [TAG]
-Starts from the same HOME pose as the data collection, runs the policy for up to SECONDS,
-then returns HOME and folds. Opens only the two robot cameras (robot_cams.json).
+usage: python rollout.py --policy CKPT --task "Move the cube to region 2." [--duration 25] [--display]
+Starts from the same HOME pose as the data collection, runs the policy for up to --duration seconds,
+then returns HOME and folds. Ctrl+C stops the policy early; the arm still returns HOME and folds.
+--display shows the cameras and joints in Rerun. Opens only the two robot cameras (robot_cams.json).
 """
-import json, os, signal, sys, threading, time
+import argparse, json, os, signal, sys, threading, time
 from pathlib import Path
 import cv2, numpy as np, torch
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
@@ -14,9 +15,20 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import HERE, WORK, FOLLOWER_PORT, FOLLOWER_ID, robot_cams, open_camera
 from kin import Arm
 
-CK, TASK = sys.argv[1], sys.argv[2]
-SECS = float(sys.argv[3]) if len(sys.argv) > 3 else 25
-TAG = sys.argv[4] if len(sys.argv) > 4 else time.strftime("%H%M%S")
+ap = argparse.ArgumentParser(description="Run a trained SmolVLA policy on the SO-101 follower.")
+ap.add_argument("--policy", required=True, help="checkpoint folder or Hugging Face repo id")
+ap.add_argument("--task", required=True, help="instruction text")
+ap.add_argument("--duration", type=float, default=25, help="seconds to run the policy")
+ap.add_argument("--tag", default=time.strftime("%H%M%S"), help="output folder name under rollouts/")
+ap.add_argument("--display", action="store_true", help="show cameras and joints in Rerun")
+A = ap.parse_args(); CK, TASK, SECS, TAG = A.policy, A.task, A.duration, A.tag
+stop_req = []
+
+
+def _sigint(*_):
+    if not stop_req: print("\nCtrl+C: stopping the policy, the arm returns HOME and folds", flush=True)
+    else: print("\nalready stopping; unplug the 12 V supply for a hard stop", flush=True)
+    stop_req.append(1)
 WD = WORK; OUT = WD / "rollouts" / TAG; OUT.mkdir(parents=True, exist_ok=True)
 FPS, MAX_STEP_DEG, CONTACT_DEG = 30, 5.0, 15.0
 log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
@@ -99,7 +111,7 @@ def fold():
 
 class Timeout(Exception): pass
 def _alarm(*_): raise Timeout("timeout")
-signal.signal(signal.SIGALRM, _alarm)
+signal.signal(signal.SIGALRM, _alarm); signal.signal(signal.SIGINT, _sigint)
 
 cams = {}; rows = []; stop = "done"
 try:
@@ -119,10 +131,15 @@ try:
             d[key] = torch.from_numpy(im).permute(2, 0, 1).float() / 255.0
         return d
 
+    if A.display:
+        from lerobot.utils.visualization_utils import init_visualization, log_visualization_data
+        init_visualization("rerun", session_name="agent2vla")
     if (WD / "STOP").exists(): (WD / "STOP").unlink()
     pol.reset(); signal.alarm(int(SECS + 60)); t0 = time.time(); streak = 0; cmd = last.copy(); k = 0
     log(f"run '{TASK}' for {SECS:.0f}s")
     while time.time() - t0 < SECS:
+        if stop_req:
+            stop = "Ctrl+C"; break
         if (WD / "STOP").exists():
             stop = "STOP file"; (WD / "STOP").unlink(); break
         ts = time.time(); st = present()
@@ -141,6 +158,10 @@ try:
         cmd = nxt
         fol.send_action({f"{m}.pos": v for m, v in zip(M, cmd)}); last = cmd.copy()
         rows.append(np.r_[time.time() - t0, st, a, cmd])
+        if A.display and k % 3 == 0:
+            ims = {n: cv2.cvtColor(cv2.resize(cams[n].get(), (640, 360)), cv2.COLOR_BGR2RGB) for n in cams}
+            log_visualization_data("rerun", observation={**ims, **{f"{m}.pos": float(v) for m, v in zip(M, st)}},
+                                   action={f"{m}.pos": float(v) for m, v in zip(M, cmd)}, compress_images=True)
         if k % 30 == 0:
             cv2.imwrite(str(OUT / f"top_{k:04d}.jpg"), cams["top"].get()); cv2.imwrite(str(OUT / f"wrist_{k:04d}.jpg"), cams["wrist"].get())
         k += 1
