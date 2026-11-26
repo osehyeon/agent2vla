@@ -2,7 +2,7 @@ import argparse, json, os, signal, subprocess, sys, time
 from pathlib import Path
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import HERE, WORK, robot_cams, open_camera
+from config import HERE, WORK
 from cube import find_cube
 ap = argparse.ArgumentParser(description="Repeat rollouts, each time asking for a region other than the one the cube is in.")
 ap.add_argument("--policy", required=True, help="checkpoint folder or Hugging Face repo id")
@@ -28,9 +28,8 @@ def locate(path):
     return {"region": reg, "angle": round(float(ang), 1), "r": round(float(rr)), "inside": bool(inside), "edge_mm": round(float(edge))}
 if A.start_image: prev = Path(A.start_image)
 else:
-    cam = open_camera(robot_cams()["top"])
-    for _ in range(10): cam.read()
-    ok, f = cam.read(); cam.release(); (WD / "snaps").mkdir(exist_ok=True); prev = WD / "snaps" / f"{PREFIX}_start.jpg"; cv2.imwrite(str(prev), f)
+    (WD / "snaps").mkdir(exist_ok=True); prev = WD / "snaps" / f"{PREFIX}_start.jpg"
+    subprocess.run([sys.executable, str(HERE / "rollout.py"), "--look", str(prev), "--tag", f"{PREFIX}_look"], cwd=WD)
 loc = locate(prev); print("start", loc, flush=True)
 results = []; stop_req = []
 signal.signal(signal.SIGINT, lambda *_: (stop_req.append(1), print("\nCtrl+C: this trial finishes its return, then trials stop", flush=True)))

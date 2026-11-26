@@ -16,13 +16,15 @@ from config import HERE, WORK, FOLLOWER_PORT, FOLLOWER_ID, robot_cams, open_came
 from kin import Arm
 
 ap = argparse.ArgumentParser(description="Run a trained SmolVLA policy on the SO-101 follower.")
-ap.add_argument("--policy", required=True, help="checkpoint folder or Hugging Face repo id")
-ap.add_argument("--task", required=True, help="instruction text")
+ap.add_argument("--policy", default=None, help="checkpoint folder or Hugging Face repo id")
+ap.add_argument("--task", default="", help="instruction text")
 ap.add_argument("--duration", type=float, default=25, help="seconds to run the policy")
 ap.add_argument("--tag", default=time.strftime("%H%M%S"), help="output folder name under rollouts/")
 ap.add_argument("--display", action="store_true", help="show cameras and joints in Rerun")
+ap.add_argument("--look", default=None, help="only go HOME, save a top image to this path, and fold (no policy)")
 ap.add_argument("--rerun", default=None, help="HOST:PORT of a running Rerun viewer (default: spawn one locally)")
 A = ap.parse_args(); CK, TASK, SECS, TAG = A.policy, A.task, A.duration, A.tag
+if not A.look and not (TASK and CK): ap.error("--policy and --task are required unless --look is given")
 stop_req = []
 
 
@@ -116,61 +118,65 @@ signal.signal(signal.SIGALRM, _alarm); signal.signal(signal.SIGINT, _sigint)
 
 cams = {}; rows = []; stop = "done"
 try:
-    dev = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-    pol = SmolVLAPolicy.from_pretrained(CK).to(dev).eval()
-    pre, post = make_pre_post_processors(pol.config, CK, preprocessor_overrides={"device_processor": {"device": dev}})
-    log("policy loaded on", dev)
+    if not A.look:
+        dev = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+        pol = SmolVLAPolicy.from_pretrained(CK).to(dev).eval()
+        pre, post = make_pre_post_processors(pol.config, CK, preprocessor_overrides={"device_processor": {"device": dev}})
+        log("policy loaded on", dev)
     cams = {"top": Cam(fixed["top"]), "wrist": Cam(fixed["wrist"])}
     for m in ["elbow_flex", "wrist_flex", "shoulder_lift"]:
         if abs(cur()[m] - mid[m]) > 3: go({**cur(), m: mid[m]}, 1.5)
     to_home(); time.sleep(0.5)
 
-    def obs_now(state):
-        d = {"observation.state": torch.tensor(state, dtype=torch.float32), "task": TASK}
-        for n, key in [("top", "observation.images.camera1"), ("wrist", "observation.images.camera2")]:
-            im = cv2.cvtColor(cv2.resize(cams[n].get(), (640, 360), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB)
-            d[key] = torch.from_numpy(im).permute(2, 0, 1).float() / 255.0
-        return d
+    if A.look:
+        time.sleep(0.5); cv2.imwrite(A.look, cams["top"].get()); stop = "look"; log("saved", A.look)
+    else:
+        def obs_now(state):
+            d = {"observation.state": torch.tensor(state, dtype=torch.float32), "task": TASK}
+            for n, key in [("top", "observation.images.camera1"), ("wrist", "observation.images.camera2")]:
+                im = cv2.cvtColor(cv2.resize(cams[n].get(), (640, 360), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB)
+                d[key] = torch.from_numpy(im).permute(2, 0, 1).float() / 255.0
+            return d
 
-    if A.display:
-        from lerobot.utils.visualization_utils import init_visualization, log_visualization_data
-        ip, port = (A.rerun.rsplit(":", 1) if A.rerun else (None, None))
-        init_visualization("rerun", session_name="agent2vla", ip=ip, port=int(port) if port else None)
-    if (WD / "STOP").exists(): (WD / "STOP").unlink()
-    pol.reset(); signal.alarm(int(SECS + 60)); t0 = time.time(); streak = 0; cmd = last.copy(); k = 0
-    log(f"run '{TASK}' for {SECS:.0f}s")
-    while time.time() - t0 < SECS:
-        if stop_req:
-            stop = "Ctrl+C"; break
-        if (WD / "STOP").exists():
-            stop = "STOP file"; (WD / "STOP").unlink(); break
-        ts = time.time(); st = present()
-        err = np.abs(cmd - st)[:5]
-        streak = streak + 1 if err.max() > CONTACT_DEG else 0
-        if streak >= 3:
-            stop = f"contact/tracking error {err.round(1).tolist()}"; break
-        with torch.no_grad():
-            a = post(pol.select_action(pre(obs_now(st)))).reshape(-1).cpu().numpy()[:len(M)]
-        tgt = np.array([np.clip(a[i], lo[m], hi[m]) for i, m in enumerate(M)])
-        step = np.clip(tgt - cmd, -MAX_STEP_DEG, MAX_STEP_DEG); step[5] = tgt[5] - cmd[5]
-        nxt = cmd + step
-        why = workspace_violation(nxt)
-        if why is not None:
-            stop = f"workspace guard: {why}"; break
-        cmd = nxt
-        fol.send_action({f"{m}.pos": v for m, v in zip(M, cmd)}); last = cmd.copy()
-        rows.append(np.r_[time.time() - t0, st, a, cmd])
-        if A.display and k % 3 == 0:
-            ims = {n: cv2.cvtColor(cv2.resize(cams[n].get(), (640, 360)), cv2.COLOR_BGR2RGB) for n in cams}
-            log_visualization_data("rerun", observation={**ims, **{f"{m}.pos": float(v) for m, v in zip(M, st)}},
-                                   action={f"{m}.pos": float(v) for m, v in zip(M, cmd)}, compress_images=True)
-        if k % 30 == 0:
-            cv2.imwrite(str(OUT / f"top_{k:04d}.jpg"), cams["top"].get()); cv2.imwrite(str(OUT / f"wrist_{k:04d}.jpg"), cams["wrist"].get())
-        k += 1
-        dt = 1 / FPS - (time.time() - ts)
-        if dt > 0: time.sleep(dt)
-    signal.alarm(0)
-    log("policy run ended:", stop, f"{k} steps")
+        if A.display:
+            from lerobot.utils.visualization_utils import init_visualization, log_visualization_data
+            ip, port = (A.rerun.rsplit(":", 1) if A.rerun else (None, None))
+            init_visualization("rerun", session_name="agent2vla", ip=ip, port=int(port) if port else None)
+        if (WD / "STOP").exists(): (WD / "STOP").unlink()
+        pol.reset(); signal.alarm(int(SECS + 60)); t0 = time.time(); streak = 0; cmd = last.copy(); k = 0
+        log(f"run '{TASK}' for {SECS:.0f}s")
+        while time.time() - t0 < SECS:
+            if stop_req:
+                stop = "Ctrl+C"; break
+            if (WD / "STOP").exists():
+                stop = "STOP file"; (WD / "STOP").unlink(); break
+            ts = time.time(); st = present()
+            err = np.abs(cmd - st)[:5]
+            streak = streak + 1 if err.max() > CONTACT_DEG else 0
+            if streak >= 3:
+                stop = f"contact/tracking error {err.round(1).tolist()}"; break
+            with torch.no_grad():
+                a = post(pol.select_action(pre(obs_now(st)))).reshape(-1).cpu().numpy()[:len(M)]
+            tgt = np.array([np.clip(a[i], lo[m], hi[m]) for i, m in enumerate(M)])
+            step = np.clip(tgt - cmd, -MAX_STEP_DEG, MAX_STEP_DEG); step[5] = tgt[5] - cmd[5]
+            nxt = cmd + step
+            why = workspace_violation(nxt)
+            if why is not None:
+                stop = f"workspace guard: {why}"; break
+            cmd = nxt
+            fol.send_action({f"{m}.pos": v for m, v in zip(M, cmd)}); last = cmd.copy()
+            rows.append(np.r_[time.time() - t0, st, a, cmd])
+            if A.display and k % 3 == 0:
+                ims = {n: cv2.cvtColor(cv2.resize(cams[n].get(), (640, 360)), cv2.COLOR_BGR2RGB) for n in cams}
+                log_visualization_data("rerun", observation={**ims, **{f"{m}.pos": float(v) for m, v in zip(M, st)}},
+                                       action={f"{m}.pos": float(v) for m, v in zip(M, cmd)}, compress_images=True)
+            if k % 30 == 0:
+                cv2.imwrite(str(OUT / f"top_{k:04d}.jpg"), cams["top"].get()); cv2.imwrite(str(OUT / f"wrist_{k:04d}.jpg"), cams["wrist"].get())
+            k += 1
+            dt = 1 / FPS - (time.time() - ts)
+            if dt > 0: time.sleep(dt)
+        signal.alarm(0)
+        log("policy run ended:", stop, f"{k} steps")
 except BaseException as ex:
     stop = f"error: {ex!r}"; log(stop)
 finally:
