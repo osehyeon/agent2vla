@@ -1,0 +1,4 @@
+{"trial": 0, "src": 3, "dst": 1, "kind": "number", "task": "Move the cube to region 1.", "after": {"region": 3, "angle": 22.1, "r": 217, "inside": true, "edge_mm": 33}, "stop": "done", "success": false}
+{"trial": 1, "src": 3, "dst": 2, "kind": "color", "task": "Put the cube on the green region.", "after": {"region": 2, "angle": -2.9, "r": 203, "inside": true, "edge_mm": 37}, "stop": "done", "success": true}
+{"trial": 2, "src": 2, "dst": 1, "kind": "both", "task": "Place the cube in region 1, the blue one.", "after": {"region": 2, "angle": 0.3, "r": 187, "inside": true, "edge_mm": 42}, "stop": "done", "success": false}
+{"trial": 3, "src": 2, "dst": 3, "kind": "unseen", "task": "Bring the cube to the yellow zone.", "after": {"region": 3, "angle": 17.9, "r": 185, "inside": false, "edge_mm": 15}, "stop": "done", "success": false}

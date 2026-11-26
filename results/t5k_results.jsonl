@@ -1,0 +1,4 @@
+{"trial": 0, "src": 2, "dst": 1, "kind": "number", "task": "Move the cube to region 1.", "after": {"region": 1, "angle": -24.5, "r": 213, "inside": true, "edge_mm": 41}, "stop": "done", "success": true}
+{"trial": 1, "src": 1, "dst": 3, "kind": "color", "task": "Put the cube on the yellow region.", "after": {"region": 3, "angle": 29.5, "r": 205, "inside": true, "edge_mm": 37}, "stop": "done", "success": true}
+{"trial": 2, "src": 3, "dst": 1, "kind": "both", "task": "Place the cube in region 1, the blue one.", "after": {"region": 3, "angle": 29.6, "r": 205, "inside": true, "edge_mm": 37}, "stop": "workspace guard: tip too close to body (r 150 mm)", "success": false}
+{"trial": 3, "src": 3, "dst": 2, "kind": "unseen", "task": "Bring the cube to the green zone.", "after": {"region": 3, "angle": 36.5, "r": 217, "inside": true, "edge_mm": 13}, "stop": "done", "success": false}
