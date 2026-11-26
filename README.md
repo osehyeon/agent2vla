@@ -34,6 +34,6 @@ Paths and the serial port are set in `robot/config.py` and can be overridden wit
 python robot/rollout.py --policy somae/smolvla-so101-cube --task "Put the cube on the green region." --display
 ```
 
-5. `robot/trials.py` repeats rollouts and checks where the cube ended up.
+5. `robot/trials.py --policy CKPT --n 10` repeats rollouts, each time asking for a region other than the one the cube is in, and checks where it ended up.
 
 `robot/so101.urdf` is `Simulation/SO101/so101_new_calib.urdf` from [TheRobotStudio/SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100) (Apache-2.0).
