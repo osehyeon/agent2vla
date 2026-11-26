@@ -11,6 +11,7 @@ sbatch train/smolvla_train.sbatch      # fine-tune
 python robot/rollout.py --policy somae/smolvla-so101-cube --task "Move the cube to region 2."
 ```
 
+Guide (Korean): [docs/guide.md](docs/guide.md), dataset notes: [docs/dataset.md](docs/dataset.md)  
 Model: https://huggingface.co/somae/smolvla-so101-cube  
 Data: https://huggingface.co/datasets/somae/so101-cube-regions  
 Video: https://youtu.be/xV32gTi1n2Q  
