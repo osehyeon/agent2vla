@@ -23,7 +23,7 @@ def locate(path):
     rr, ang = np.hypot(*dd), np.degrees(np.arctan2(dd[0], dd[1]))
     reg = int(np.clip(np.searchsorted(EDGES, ang), 1, 3)); lo, hi = EDGES[reg - 1], EDGES[reg]
     edge = min(rr * np.sin(np.radians(ang - lo)), rr * np.sin(np.radians(hi - ang)))
-    inside = 190 - 10 <= rr <= 265 + 10 and min(q[0], 297 - q[0], q[1], 210 - q[1]) > 20 and edge >= 20
+    inside = 190 - 10 <= rr <= 265 + 10 and min(q[0], 297 - q[0], q[1], 210 - q[1]) > 20 and edge > 0
     return {"region": reg, "angle": round(float(ang), 1), "r": round(float(rr)), "inside": bool(inside), "edge_mm": round(float(edge))}
 if A.start_image: prev = Path(A.start_image)
 else:
