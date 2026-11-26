@@ -2,7 +2,7 @@ import json, os, random, signal, subprocess, sys, threading, time
 from pathlib import Path
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import HERE, WORK, FOLLOWER_PORT, FOLLOWER_ID, robot_cams, open_camera
+from config import HERE, WORK, FOLLOWER_PORT, FOLLOWER_ID, robot_cams, open_camera, setup_file, robot_lock
 from kin import Arm
 from cube import find_cube
 from paper_pose import paper_to_robot, MK
@@ -11,7 +11,7 @@ from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 WD = WORK; OUT = WD / "collect"; OUT.mkdir(exist_ok=True)
 MODE = sys.argv[1]; NEP = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 SPEED, FPS, PER_CHUNK, CYCLE_TIMEOUT, MAX_FAILS = 1.5, 30, 5, 120, 3
-H = np.array(json.load(open(HERE / "homography.json"))["H_robot_to_px"]); Hi = np.linalg.inv(H)
+H = np.array(json.load(open(setup_file("homography.json")))["H_robot_to_px"]); Hi = np.linalg.inv(H)
 CAL = OUT / "cube_calib.json"
 cc = json.load(open(CAL)) if CAL.exists() else {"tgt": [495, 505], "pxmm": 7.7}
 OFF_G = np.array([38.5, -5.7, -3.6]) / 1000
@@ -63,6 +63,7 @@ class Cam:
     def close(self): self.run = False; time.sleep(0.1); self.c.release()
 
 
+robot_lock()
 fol = SO101Follower(SO101FollowerConfig(port=FOLLOWER_PORT, id=FOLLOWER_ID)); fol.connect(calibrate=False)
 cal = fol.bus.calibration; M = list(fol.bus.motors)
 for m in M:

@@ -2,7 +2,7 @@
 import json, os, subprocess, sys, time, traceback
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import HERE, WORK, FOLLOWER_PORT, FOLLOWER_ID, robot_cams, open_camera
+from config import HERE, WORK, FOLLOWER_PORT, FOLLOWER_ID, robot_cams, open_camera, robot_lock
 from kin import Arm
 from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 
@@ -10,6 +10,7 @@ D = str(WORK / "ctl"); os.makedirs(D, exist_ok=True)
 CMD, OUT = D + "/cmd.json", D + "/out.json"
 for f in (CMD, OUT):
     if os.path.exists(f): os.remove(f)
+robot_lock()
 fol = SO101Follower(SO101FollowerConfig(port=FOLLOWER_PORT, id=FOLLOWER_ID)); fol.connect(calibrate=False)
 cal = fol.bus.calibration; M = list(fol.bus.motors)
 lim = {k: (-(c.range_max - c.range_min) * 360 / 4095 / 2 * 0.97, (c.range_max - c.range_min) * 360 / 4095 / 2 * 0.97) for k, c in cal.items()}

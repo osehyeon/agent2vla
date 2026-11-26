@@ -12,7 +12,7 @@ from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
 from lerobot.policies.factory import make_pre_post_processors
 from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import HERE, WORK, FOLLOWER_PORT, FOLLOWER_ID, robot_cams, open_camera
+from config import HERE, WORK, FOLLOWER_PORT, FOLLOWER_ID, robot_cams, open_camera, robot_lock
 from kin import Arm
 
 ap = argparse.ArgumentParser(description="Run a trained SmolVLA policy on the SO-101 follower.")
@@ -21,6 +21,7 @@ ap.add_argument("--task", default="", help="instruction text")
 ap.add_argument("--duration", type=float, default=25, help="seconds to run the policy")
 ap.add_argument("--tag", default=time.strftime("%H%M%S"), help="output folder name under rollouts/")
 ap.add_argument("--look", default=None, help="only go HOME, save a top image to this path, and fold (no policy)")
+ap.add_argument("--hold", type=float, default=0, help="with --look, seconds to stay at HOME before folding (Ctrl+C folds early)")
 ap.add_argument("--view", default=None, help="HOST:PORT of a running viewer.py")
 A = ap.parse_args(); CK, TASK, SECS, TAG = A.policy, A.task, A.duration, A.tag
 if not A.look and not (TASK and CK): ap.error("--policy and --task are required unless --look is given")
@@ -55,6 +56,7 @@ class Cam:
 
 
 fixed = robot_cams()
+robot_lock()
 fol = SO101Follower(SO101FollowerConfig(port=FOLLOWER_PORT, id=FOLLOWER_ID)); fol.connect(calibrate=False)
 M = list(fol.bus.motors); cal = fol.bus.calibration
 for m in M:
@@ -160,6 +162,9 @@ try:
 
     if A.look:
         time.sleep(0.5); cv2.imwrite(A.look, cams["top"].get()); stop = "look"; log("saved", A.look)
+        t_hold = time.time()
+        if A.hold: log(f"holding HOME for {A.hold:.0f}s")
+        while time.time() - t_hold < A.hold and not stop_req: time.sleep(0.1)
     else:
         def obs_now(state):
             d = {"observation.state": torch.tensor(state, dtype=torch.float32), "task": TASK}

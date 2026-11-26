@@ -2,7 +2,7 @@ import argparse, json, os, signal, subprocess, sys, time
 from pathlib import Path
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import HERE, WORK
+from config import HERE, WORK, setup_file, robot_lock
 from cube import find_cube
 ap = argparse.ArgumentParser(description="Repeat rollouts, each time asking for a region other than the one the cube is in.")
 ap.add_argument("--policy", required=True, help="checkpoint folder or Hugging Face repo id")
@@ -10,8 +10,8 @@ ap.add_argument("--n", type=int, default=10, help="number of trials")
 ap.add_argument("--prefix", default=time.strftime("t%m%d_%H%M"), help="name prefix for rollouts/ and the results file")
 ap.add_argument("--start-image", default=None, help="top image to find the cube in (default: take one now)")
 ap.add_argument("--view", default=None, help="HOST:PORT of a running viewer.py; Esc or q there stops the current trial")
-A = ap.parse_args(); WD = WORK; CK, N, PREFIX = A.policy, A.n, A.prefix
-H = np.array(json.load(open(HERE / "homography.json"))["H_robot_to_px"]); Hi = np.linalg.inv(H)
+A = ap.parse_args(); robot_lock(); WD = WORK; CK, N, PREFIX = A.policy, A.n, A.prefix
+H = np.array(json.load(open(setup_file("homography.json")))["H_robot_to_px"]); Hi = np.linalg.inv(H)
 pp = json.load(open(WD / "collect" / "paper_pose.json")); R, t = np.array(pp["R"]), np.array(pp["t"])
 O = np.array([144.3, -90.8]); EDGES = np.linspace(-40, 40, 4); COL = {1: "blue", 2: "green", 3: "yellow"}
 KINDS = [("number", "Move the cube to region {n}."), ("color", "Put the cube on the {c} region."),
