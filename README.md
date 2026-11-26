@@ -12,5 +12,6 @@ python robot/rollout.py --policy somae/smolvla-so101-cube --task "Move the cube 
 ```
 
 Model: https://huggingface.co/somae/smolvla-so101-cube  
+Data: https://huggingface.co/datasets/somae/so101-cube-regions  
 Video: https://youtu.be/xV32gTi1n2Q  
 URDF: [TheRobotStudio/SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100) (Apache-2.0)
