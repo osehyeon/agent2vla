@@ -1,39 +1,26 @@
 # agent2vla
 
-A frontier model (Claude) writes and debugs a scripted data collector for an SO-101 arm. The collector records demonstrations without teleoperation, and SmolVLA is fine-tuned on them to do the task on its own.
+Claude wrote the data-collection script for my SO-101 arm. The script collected 100 demos without teleoperation, and I fine-tuned SmolVLA on them.
 
-Task: move a cube to the region named in an instruction (region 1, 2, 3 = blue, green, yellow).
+The task is to move a cube to region 1, 2 or 3 (blue, green, yellow) as the instruction says.
 
-Videos: [scripted collection](https://youtu.be/1S-19LJiTYw), [SmolVLA on the robot](https://youtu.be/xV32gTi1n2Q)
+- Videos: [collection, 8x](https://youtu.be/1S-19LJiTYw), [SmolVLA, 2x](https://youtu.be/xV32gTi1n2Q)
+- Model: [somae/smolvla-so101-cube](https://huggingface.co/somae/smolvla-so101-cube)
 
-## Layout
-
-| Folder | Contents |
-|---|---|
-| `robot/` | Data collector, policy rollout, kinematics, cube and sheet detection |
-| `train/` | SmolVLA fine-tuning job |
-| `results/` | Instructions per episode, real-robot trials |
-
-## Install
+## Run
 
 ```
 pip install "lerobot[smolvla,feetech]==0.6.1" trimesh
+
+python robot/collect.py collect 20
+python robot/merge_relabel.py
+cd train && mkdir -p logs && STEPS=20000 sbatch smolvla_train.sbatch && cd ..
+python robot/rollout.py --policy somae/smolvla-so101-cube --task "Put the cube on the green region."
+python robot/trials.py --policy somae/smolvla-so101-cube --n 10
 ```
 
-Paths and the serial port are set in `robot/config.py` and can be overridden with `AGENT2VLA_WORK`, `AGENT2VLA_FOLLOWER_PORT` and `AGENT2VLA_FOLLOWER_ID`.
+Ctrl+C stops a run, and the arm goes home and folds. Paths and the serial port are in `robot/config.py`.
 
-## Pipeline
+`robot/ctl.py` is how Claude drove the arm directly, before the collection script existed.
 
-0. `robot/ctl.py` is a command server for direct control: Claude reads the camera images and sends target poses. The collector grew out of it.
-1. `robot/collect.py collect N` records LeRobotDataset episodes.
-2. `robot/merge_relabel.py` merges them and assigns instructions.
-3. `train/smolvla_train.sbatch` fine-tunes `lerobot/smolvla_base`.
-4. `robot/rollout.py` runs the policy on the arm. Ctrl+C, or Esc in the viewer window, stops it; the arm then returns home and folds. To watch from another machine, run `robot/viewer.py` there and forward its port (`ssh -R 9877:127.0.0.1:9877`).
-
-```
-python robot/rollout.py --policy somae/smolvla-so101-cube --task "Put the cube on the green region." --view 127.0.0.1:9877
-```
-
-5. `robot/trials.py --policy CKPT --n 10` repeats rollouts, each time asking for a region other than the one the cube is in, and checks where it ended up.
-
-`robot/so101.urdf` is `Simulation/SO101/so101_new_calib.urdf` from [TheRobotStudio/SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100) (Apache-2.0).
+`robot/so101.urdf` comes from [TheRobotStudio/SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100) (Apache-2.0).
