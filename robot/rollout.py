@@ -21,6 +21,7 @@ ap.add_argument("--task", required=True, help="instruction text")
 ap.add_argument("--duration", type=float, default=25, help="seconds to run the policy")
 ap.add_argument("--tag", default=time.strftime("%H%M%S"), help="output folder name under rollouts/")
 ap.add_argument("--display", action="store_true", help="show cameras and joints in Rerun")
+ap.add_argument("--rerun", default=None, help="HOST:PORT of a running Rerun viewer (default: spawn one locally)")
 A = ap.parse_args(); CK, TASK, SECS, TAG = A.policy, A.task, A.duration, A.tag
 stop_req = []
 
@@ -133,7 +134,8 @@ try:
 
     if A.display:
         from lerobot.utils.visualization_utils import init_visualization, log_visualization_data
-        init_visualization("rerun", session_name="agent2vla")
+        ip, port = (A.rerun.rsplit(":", 1) if A.rerun else (None, None))
+        init_visualization("rerun", session_name="agent2vla", ip=ip, port=int(port) if port else None)
     if (WD / "STOP").exists(): (WD / "STOP").unlink()
     pol.reset(); signal.alarm(int(SECS + 60)); t0 = time.time(); streak = 0; cmd = last.copy(); k = 0
     log(f"run '{TASK}' for {SECS:.0f}s")
