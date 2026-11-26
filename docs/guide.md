@@ -65,9 +65,10 @@ python robot/merge_relabel.py
 새 책상이나 다른 기계에서 처음 세팅할 때 한다.
 
 1. 설치: `pip install "lerobot[smolvla,feetech]==0.6.1" trimesh`. Jetson Orin(JetPack 7.2)은 이어서 `pip install "torch==2.12.1" "torchvision==0.27.1" --index-url https://download.pytorch.org/whl/cu132`
-2. 팔 캘리브레이션: `lerobot-calibrate --robot.type=so101_follower --robot.port=<포트> --robot.id=my_follower`
+2. 팔 캘리브레이션: `lerobot-calibrate --robot.type=so101_follower --robot.port=<포트> --robot.id=my_follower`. 역기구학의 기준 자세(`kin.py`)는 이 결과에서 자동으로 계산된다
 3. 카메라: `/dev/v4l/by-path/`에서 두 카메라 경로를 찾아 `$AGENT2VLA_WORK/robot_cams.json`에 `{"top": ..., "wrist": ...}`로 적는다
 4. 종이: `robot/sheet_a4.pdf`를 배율 100 %로 인쇄한다. 부채꼴 중심이 어깨 회전축에 오게 놓는다. 회전축은 종이 아래 변에서 90.8 mm 아래, 왼쪽 변에서 144.3 mm 오른쪽이다
 5. 위 카메라와 로봇 좌표: `python robot/calib_table.py`
-6. 집는 위치: 큐브를 놓고 `python robot/collect.py calib`
-7. 학습: `train/smolvla_train.sbatch` 또는 `lerobot-train` (설정은 그 파일 참고)
+6. 손목 카메라 방향: 큐브를 빨간 면이 위로 오게 놓고 `python robot/calib_wrist.py`
+7. 집는 위치: 큐브를 놓고 `python robot/collect.py calib`
+8. 학습: `train/smolvla_train.sbatch` 또는 `lerobot-train` (설정은 그 파일 참고)

@@ -16,6 +16,10 @@ CAL = OUT / "cube_calib.json"
 cc = json.load(open(CAL)) if CAL.exists() else {"tgt": [495, 505], "pxmm": 7.7}
 OFF_G = np.array([38.5, -5.7, -3.6]) / 1000
 XIMG_G = np.array([0.991, -0.1, -0.084]); YIMG_G = np.array([-0.095, -0.994, 0.053])
+try:
+    _wc = json.load(open(setup_file("wrist_cam.json")))
+    XIMG_G, YIMG_G = np.array(_wc["XIMG_G"]), np.array(_wc["YIMG_G"]); cc["pxmm"] = _wc["pxmm"]
+except FileNotFoundError: pass
 ZH, ZOBS, ZG, ZP = 60, 40, 0, 4
 ZONE_O, ZONE_M, RMIN, RMAX = np.array([144.3, -90.8]), 24, 190, 265
 EDGES = np.linspace(-40, 40, 4); NREG = 3

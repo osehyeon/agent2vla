@@ -1,9 +1,23 @@
 import xml.etree.ElementTree as ET
 import numpy as np
 
-C0 = {"shoulder_pan": 5.2, "shoulder_lift": 33.8, "elbow_flex": 8.4, "wrist_flex": 3.3, "wrist_roll": 0.0}
 TIP = np.array([-0.011, -0.0002, -0.1044])
 ARM = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
+
+
+def _zero_pose():
+    """LeRobot joint degrees at the URDF zero pose: the calibration middle pose (raw 2047) of this follower."""
+    try:
+        import json
+        from config import FOLLOWER_CALIB
+        cal = json.load(open(FOLLOWER_CALIB))
+        c0 = {k: (2047 - (cal[k]["range_min"] + cal[k]["range_max"]) / 2) * 360 / 4095 for k in ARM[:4]}
+        return {**c0, "wrist_roll": 0.0}
+    except (OSError, KeyError, ImportError):
+        return {"shoulder_pan": 5.2, "shoulder_lift": 33.8, "elbow_flex": 8.4, "wrist_flex": 3.3, "wrist_roll": 0.0}
+
+
+C0 = _zero_pose()
 
 
 def _rpy(r, p, y):
